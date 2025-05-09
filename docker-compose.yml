@@ -102,7 +102,7 @@ services:
 
   ngrok-bolt:
     image: ngrok/ngrok:latest
-    command: tcp neo4j:7687 --region=us --remote-addr=5.tcp.ngrok.io:25165
+    command: tcp neo4j:7687 --region=us --remote-addr=${NGROK_TCP_ENDPOINT}
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
     networks:
