@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  neo4j-init:
+    image: neo4j:5-community
+    depends_on:
+      - neo4j
+    volumes:
+      - ./docker/cw-config/cw-config/cw-db-setup:/scripts
+    entrypoint: [ "bash", "-c" ]
+    command: >
+      "
+      if [ ! -f /scripts/.init_done ]; then
+        echo 'Waiting for Neo4j to be ready...';
+        until /var/lib/neo4j/bin/cypher-shell -a bolt://neo4j:7687 -u neo4j -p password 'RETURN 1' > /dev/null 2>&1; do sleep 1; done;
+        echo 'Running initial Cypher setup...';
+        /var/lib/neo4j/bin/cypher-shell -a bolt://neo4j:7687 -u neo4j -p password < /scripts/cypher_constraints_v4.4_to_5.cypher;
+        /var/lib/neo4j/bin/cypher-shell -a bolt://neo4j:7687 -u neo4j -p password < /scripts/cypher_init_data.cypher;
+        touch /scripts/.init_done;
+      else
+        echo 'Init already done.';
+      fi
+      "
+    networks:
+      - cypher-network
+
+  neo4j:
+    image: neo4j:5-community
+    user: "1000:1000"
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/password
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_dbms_security_procedures_unrestricted=*
+    volumes:
+      - ./neo4j/data:/data
+      - ./neo4j/logs:/logs
+      - ./neo4j/import:/var/lib/neo4j/import
+      - ./neo4j/plugins:/plugins
+    networks:
+      - cypher-network
+
+  cypher-workbench-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: cypher-workbench-api:latest
+    ports:
+      - "4000:4000"
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=password
+      - NEO4J_DATABASE=neo4j
+      - HOST_PROTOCOL=http
+      - HOST_NAME=${NGROK_DOMAIN}
+    networks:
+      - cypher-network
+    volumes:
+      - ./api/license.lic:/app/license.lic:ro
+
+  cypher-workbench-ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    image: cypher-workbench-ui:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - cypher-workbench-api
+    networks:
+      - cypher-network
+    volumes:
+      - ./ui/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./ui/public/config:/usr/share/nginx/html/config:ro
+      - ./certs/fullchain.pem:/etc/ssl/server.crt:ro
+      - ./certs/privkey.pem:/etc/ssl/server.key:ro
+    environment:
+      - REACT_APP_GRAPHQL_URI=https://${NGROK_DOMAIN}/graphql
+      - REACT_APP_RUN_MODE=normal
+      - REACT_APP_BASE_URL=https://${NGROK_DOMAIN}
+      - REACT_APP_AUTH_METHOD=local
+      - REACT_APP_ENCRYPTION_KEY=workbenchEncryptionKey
+      - REACT_APP_HELP_URL=https://help.neo4j.solutions/neo4j-solutions/cypher-workbench/
+      - REACT_APP_CYPHER_CANVAS_DEBUG_ENABLED=true
+      - REACT_APP_EULA=none
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    command: http --domain=${NGROK_DOMAIN} cypher-workbench-ui:80
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    networks:
+      - cypher-network
+    depends_on:
+      - cypher-workbench-ui
+
+  ngrok-bolt:
+    image: ngrok/ngrok:latest
+    command: tcp neo4j:7687 --region=us --remote-addr=5.tcp.ngrok.io:25165
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    networks:
+      - cypher-network
+    depends_on:
+      - neo4j
+
+
+networks:
+  cypher-network:
+    driver: bridge

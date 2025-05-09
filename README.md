@@ -67,6 +67,36 @@ If you change any `.env` settings you will need to restart the API by stopping i
 ## Advanced topics
 These sections describe further optional configuration.
 
+### Setting up HTTPS via ngrok
+You can expose your local Cypher Workbench instance over HTTPS using ngrok. This allows you to access your workbench remotely and securely. Here's how to set it up:
+
+1. Sign up for an ngrok account and install the ngrok client from [ngrok.com](https://ngrok.com/)
+2. Configure your ngrok with your auth token
+3. Update the `ui/nginx.conf` file to include your ngrok domain:
+   ```
+   server {
+       listen       80;
+       server_name  localhost your-domain.ngrok-free.app;
+       ...
+   }
+   ```
+4. Update the `ui/public/config/env-config.js` to use your ngrok URL:
+   ```javascript
+   window._dynamicEnv_ = {
+       // Other configs...
+       REACT_APP_GRAPHQL_URI: 'https://your-domain.ngrok-free.app/graphql',
+       // Other configs...
+   }
+   ```
+5. Start your Cypher Workbench API and UI
+6. Start ngrok with: `ngrok http 80`
+7. Access your workbench via the ngrok URL (e.g., https://your-domain.ngrok-free.app)
+
+This setup allows you to:
+- Access your workbench securely over HTTPS
+- Share your workbench with others temporarily
+- Test your workbench from various devices
+
 ### Updating the encryption key
 When using the default `local` authentication scheme, there is a simple encryption process for encrypting a user's password. The encryption key used is set both at the UI and API layers. It is not required to modify this key, but it is recommended before creating any users. Once you have created users, do not modify it again.
 * *api/.env*: ENCRYPTION_KEY=workbenchEncryptionKey
