@@ -1,0 +1,12 @@
+{{/*
+    This template has been disabled as Neo4j is now deployed using the official Neo4j Helm chart
+    as a dependency. For Neo4j configuration, please use the nested values under .Values.neo4j
+    which are passed to the Neo4j subchart.
+
+    The Neo4j deployment will be available with these service names:
+    - {{ .Release.Name }}-neo4j - Main Neo4j service
+
+    Connection to Neo4j can be made using these helper templates:
+    - {{ include "cypher-workbench.neo4j.httpServiceName" . }} (for HTTP)
+    - {{ include "cypher-workbench.neo4j.boltServiceName" . }} (for bolt)
+*/}}

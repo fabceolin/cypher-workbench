@@ -1,0 +1,239 @@
+## Global parameters
+global:
+  # Domain name for the application
+  domain: workbench.example.com
+  # TLS settings
+  tls:
+    enabled: true
+    # secretName: cypher-workbench-tls
+    # cert and key will be generated if not provided
+    # certificate: 
+    # key: 
+
+## Image settings
+image:
+  registry: docker.io
+  pullPolicy: IfNotPresent
+  # These will be used if registry is not overridden in each service
+  neo4j:
+    repository: graphstack/dozerdb
+    tag: 5.26.3.0
+    pullPolicy: IfNotPresent
+  api:
+    repository: your-registry/cypher-workbench-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  ui:
+    repository: your-registry/cypher-workbench-ui
+    tag: latest
+    pullPolicy: IfNotPresent
+
+## Neo4j settings
+neo4j:
+  # Whether to install Neo4j as part of the chart
+  # Set to false if you want to use an external Neo4j instance
+  enabled: true
+
+  # Neo4j official Helm chart configuration
+  # The following applies to the Neo4j Helm chart dependency when enabled=true
+
+  # Set to true to use standalone deployment (not clustered)
+  core:
+    standalone: true
+
+  # Neo4j edition (community or enterprise)
+  neo4j:
+    name: cypher-workbench-neo4j
+    edition: community
+    acceptLicenseAgreement: "yes"
+
+    # Authentication settings
+    password: password
+
+    # Additional Neo4j configuration
+    config:
+      dbms.security.procedures.unrestricted: "*"
+
+    # APOC plugin and related settings
+    plugins:
+      - apoc
+
+    # Import/export directories
+    importEnabled: true
+
+  # Persistent storage
+  volumes:
+    data:
+      mode: defaultStorageClass
+      defaultStorageClass:
+        requests:
+          storage: 10Gi
+
+  # Service configuration (these settings apply to the Neo4j chart's services)
+  services:
+    neo4j:
+      annotations: {}
+      enabled: true
+      type: ClusterIP
+
+  # Backwards compatibility for our own templates
+  # These are used by our existing templates for references
+  # Some of these might become unused after migration
+  _compatibility:
+    fullname: cypher-workbench-neo4j
+    username: neo4j
+    password: password
+    service:
+      httpPort: 7474
+      boltPort: 7687
+
+# External Neo4j Connection
+# These settings are used when neo4j.enabled=false
+externalNeo4j:
+  # Connection details for the external Neo4j instance
+  uri: "bolt://neo4j-host:7687"
+  username: "neo4j"
+  password: "password"
+  database: "neo4j"
+  # Whether to apply initialization scripts to the external database
+  init: false
+
+## Neo4j init job
+neo4jInit:
+  enabled: true
+  # Init scripts
+  scripts:
+    constraints: |
+      # cypher_constraints_v4.4_to_5.cypher content here
+    initData: |
+      # cypher_init_data.cypher content here
+  # Job configuration
+  job:
+    annotations: {}
+    backoffLimit: 10
+    activeDeadlineSeconds: 600
+    ttlSecondsAfterFinished: 100
+
+## API service settings
+api:
+  enabled: true
+  # name override for the api deployment
+  nameOverride: ""
+  # Replica count
+  replicaCount: 1
+  # Resource limits and requests
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  # Pod annotations
+  podAnnotations: {}
+  # Node selector
+  nodeSelector: {}
+  # Tolerations
+  tolerations: []
+  # Affinity rules
+  affinity: {}
+  # API configuration
+  config:
+    port: 4000
+    neo4j:
+      # URI will be conditionally determined based on neo4j.enabled
+      # If neo4j.enabled=true, we'll use the built-in Neo4j instance
+      # If neo4j.enabled=false, we'll use externalNeo4j.uri
+      database: neo4j
+    host:
+      protocol: https
+      name: "{{ .Values.global.domain }}"
+  # License configuration
+  license:
+    existingSecret: ""
+    content: ""
+  # API service configuration
+  service:
+    type: ClusterIP
+    port: 4000
+    annotations: {}
+
+## UI service settings
+ui:
+  enabled: true
+  # name override for the ui deployment
+  nameOverride: ""
+  # Replica count
+  replicaCount: 1
+  # Resource limits and requests
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  # Pod annotations
+  podAnnotations: {}
+  # Node selector
+  nodeSelector: {}
+  # Tolerations
+  tolerations: []
+  # Affinity rules
+  affinity: {}
+  # UI configuration
+  config:
+    # REACT_APP environment variables
+    graphqlUri: https://{{ .Values.global.domain }}/graphql
+    runMode: normal
+    baseUrl: https://{{ .Values.global.domain }}
+    authMethod: local
+    encryptionKey: workbenchEncryptionKey
+    helpUrl: https://help.neo4j.solutions/neo4j-solutions/cypher-workbench/
+    cypherCanvasDebugEnabled: true
+    eula: none
+    modelDataExportEnabled: false
+    cypherSuiteExportToBigQueryEnabled: false
+  # NGINX configuration settings
+  nginx:
+    # Server name in nginx.conf
+    serverName: {{ .Values.global.domain }}
+    # Additional configuration
+    additionalConfig: ""
+  # UI service configuration
+  service:
+    type: ClusterIP
+    port: 80
+    annotations: {}
+
+## Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: "{{ .Values.global.domain }}"
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: "{{ include \"cypher-workbench.ui.fullname\" . }}"
+              port:
+                number: 80
+  tls:
+    - secretName: "{{ .Values.global.domain }}-tls"
+      hosts:
+        - "{{ .Values.global.domain }}"
+
+## ServiceAccount configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""

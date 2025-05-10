@@ -1,0 +1,22 @@
+{{- if .Values.ui.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cypher-workbench.ui.fullname" . }}-env-config
+  labels:
+    {{- include "cypher-workbench.ui.labels" .  < /dev/null |  nindent 4 }}
+data:
+  env-config.js: |-
+    window._dynamicEnv_ = {
+      REACT_APP_GRAPHQL_URI: '{{ .Values.ui.config.graphqlUri }}',
+      REACT_APP_RUN_MODE: '{{ .Values.ui.config.runMode }}',
+      REACT_APP_BASE_URL: '{{ .Values.ui.config.baseUrl }}',
+      REACT_APP_AUTH_METHOD: '{{ .Values.ui.config.authMethod }}',
+      REACT_APP_ENCRYPTION_KEY: '{{ .Values.ui.config.encryptionKey }}',
+      REACT_APP_HELP_URL: '{{ .Values.ui.config.helpUrl }}',
+      REACT_APP_CYPHER_CANVAS_DEBUG_ENABLED: {{ .Values.ui.config.cypherCanvasDebugEnabled }},
+      REACT_APP_EULA: '{{ .Values.ui.config.eula }}',
+      REACT_APP_MODEL_DATA_EXPORT_ENABLED: {{ .Values.ui.config.modelDataExportEnabled }},
+      REACT_APP_CYPHER_SUITE_EXPORT_TO_BIGQUERY_ENABLED: {{ .Values.ui.config.cypherSuiteExportToBigQueryEnabled }}
+    }
+{{- end }}

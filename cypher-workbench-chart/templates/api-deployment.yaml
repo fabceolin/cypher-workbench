@@ -1,0 +1,75 @@
+{{- if .Values.api.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cypher-workbench.api.fullname" . }}
+  labels:
+    {{- include "cypher-workbench.api.labels" .  < /dev/null |  nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "cypher-workbench.api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.api.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "cypher-workbench.api.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "cypher-workbench.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ include "cypher-workbench.api.fullname" . }}
+          securityContext:
+            {{- toYaml .Values.api.securityContext | nindent 12 }}
+          image: "{{ .Values.image.registry }}/{{ .Values.image.api.repository }}:{{ .Values.image.api.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.config.port }}
+              protocol: TCP
+          env:
+            - name: NEO4J_URI
+              value: {{ include "cypher-workbench.neo4j.boltURI" . }}
+            - name: NEO4J_USER
+              value: {{ include "cypher-workbench.neo4j.username" . }}
+            - name: NEO4J_PASSWORD
+              value: {{ include "cypher-workbench.neo4j.password" . }}
+            - name: NEO4J_DATABASE
+              value: {{ include "cypher-workbench.neo4j.database" . }}
+            - name: HOST_PROTOCOL
+              value: {{ .Values.api.config.host.protocol }}
+            - name: HOST_NAME
+              value: {{ .Values.api.config.host.name }}
+          volumeMounts:
+            - name: license
+              mountPath: /app/license.lic
+              subPath: license.lic
+              readOnly: true
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: license
+          secret:
+            secretName: {{ include "cypher-workbench.api.fullname" . }}-license
+{{- end }}

@@ -1,0 +1,56 @@
+{{- if or (and .Values.neo4j.enabled .Values.neo4jInit.enabled) (and (not .Values.neo4j.enabled) .Values.externalNeo4j.init .Values.neo4jInit.enabled) -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-neo4j-cypher-init
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}-neo4j-cypher-init
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: init
+  {{- with .Values.neo4jInit.job.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  backoffLimit: {{ .Values.neo4jInit.job.backoffLimit }}
+  {{- if .Values.neo4jInit.job.activeDeadlineSeconds }}
+  activeDeadlineSeconds: {{ .Values.neo4jInit.job.activeDeadlineSeconds }}
+  {{- end }}
+  {{- if .Values.neo4jInit.job.ttlSecondsAfterFinished }}
+  ttlSecondsAfterFinished: {{ .Values.neo4jInit.job.ttlSecondsAfterFinished }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Release.Name }}-neo4j-cypher-init
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: neo4j-init
+          # Use the same Neo4j image the subchart is using
+          image: "{{ .Values.image.registry }}/{{ .Values.image.neo4j.repository }}:{{ .Values.image.neo4j.tag | default .Chart.AppVersion }}"
+          command:
+            - bash
+            - -c
+            - |
+              echo 'Waiting for Neo4j to be ready...'
+              # Connect to the Neo4j instance provided by the subchart
+              until cypher-shell -a {{ include "cypher-workbench.neo4j.boltURI" . }} -u {{ include "cypher-workbench.neo4j.username" . }} -p {{ include "cypher-workbench.neo4j.password" . }} 'RETURN 1' > /dev/null 2>&1; do
+                echo "Waiting for Neo4j to be ready..."
+                sleep 5
+              done
+
+              echo 'Running init scripts...'
+              echo "{{ .Values.neo4jInit.scripts.constraints }}" > /tmp/constraints.cypher
+              echo "{{ .Values.neo4jInit.scripts.initData }}" > /tmp/init_data.cypher
+
+              echo 'Applying constraints...'
+              cypher-shell -a {{ include "cypher-workbench.neo4j.boltURI" . }} -u {{ include "cypher-workbench.neo4j.username" . }} -p {{ include "cypher-workbench.neo4j.password" . }} < /tmp/constraints.cypher
+
+              echo 'Loading initial data...'
+              cypher-shell -a {{ include "cypher-workbench.neo4j.boltURI" . }} -u {{ include "cypher-workbench.neo4j.username" . }} -p {{ include "cypher-workbench.neo4j.password" . }} < /tmp/init_data.cypher
+
+              echo 'Initialization complete'
+{{- end }}

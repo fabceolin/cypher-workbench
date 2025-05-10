@@ -1,0 +1,39 @@
+Thank you for installing {{ .Chart.Name }}.
+
+Your release is named {{ .Release.Name }}.
+
+To access the Cypher Workbench UI:
+{{- if .Values.ingress.enabled }}
+  {{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+  {{- end }}
+{{- else }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "cypher-workbench.name" . }},app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=ui" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+  echo "Visit http://localhost:8080 to access the Cypher Workbench UI"
+{{- end }}
+
+To access the Neo4j Browser:
+{{- if .Values.ingress.enabled }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ (index .Values.ingress.hosts 0).host }}/neo4jbrowser/
+{{- else }}
+  export NEO4J_POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "cypher-workbench.name" . }},app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=neo4j" -o jsonpath="{.items[0].metadata.name}")
+  kubectl --namespace {{ .Release.Namespace }} port-forward $NEO4J_POD_NAME 7474:7474
+  echo "Visit http://localhost:7474 to access the Neo4j Browser"
+{{- end }}
+
+Neo4j Connection Details:
+  Neo4j Username: {{ .Values.neo4j.auth.username }}
+  Neo4j Password: {{ .Values.neo4j.auth.password }}
+  {{- if .Values.ingress.enabled }}
+  Neo4j Browser URL: http{{ if $.Values.ingress.tls }}s{{ end }}://{{ (index .Values.ingress.hosts 0).host }}/neo4jbrowser/
+  Neo4j Bolt URL: bolt://{{ (index .Values.ingress.hosts 0).host }}/database/
+  {{- else }}
+  Neo4j Browser URL: http://{{ include "cypher-workbench.neo4j.fullname" . }}:{{ .Values.neo4j.service.httpPort }}
+  Neo4j Bolt URL: bolt://{{ include "cypher-workbench.neo4j.fullname" . }}:{{ .Values.neo4j.service.boltPort }}
+  {{- end }}
+
+For more information, see the README.md file in the Cypher Workbench GitHub repository.

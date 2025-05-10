@@ -1,0 +1,7 @@
+{{/*
+    This template has been disabled as Neo4j is now deployed using the official Neo4j Helm chart
+    as a dependency. Persistent volume claims are automatically created by the subchart.
+
+    The Neo4j persistence is configured through the values:
+    - neo4j.volumes.data - for main data storage
+*/}}

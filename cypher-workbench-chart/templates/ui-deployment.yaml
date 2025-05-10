@@ -1,0 +1,107 @@
+{{- if .Values.ui.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cypher-workbench.ui.fullname" . }}
+  labels:
+    {{- include "cypher-workbench.ui.labels" .  < /dev/null |  nindent 4 }}
+spec:
+  replicas: {{ .Values.ui.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "cypher-workbench.ui.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.ui.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "cypher-workbench.ui.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "cypher-workbench.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.ui.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: nginx-config-init
+          image: busybox:latest
+          command: ['sh', '-c', 'echo "
+server {
+    listen       80;
+    server_name  {{ .Values.ui.nginx.serverName }};
+
+    location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+        try_files $uri /index.html;                 
+    }
+
+    location /graphql {
+        proxy_pass http://{{ include "cypher-workbench.api.fullname" . }}:{{ .Values.api.service.port }}/graphql;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection '\''upgrade'\'';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /neo4jbrowser/ {
+        proxy_pass http://{{ include "cypher-workbench.neo4j.fullname" . }}:{{ .Values.neo4j.service.httpPort }}/browser;
+        proxy_set_header Host $host;
+    }
+
+    location /database/ {
+        proxy_pass http://{{ include "cypher-workbench.neo4j.fullname" . }}:{{ .Values.neo4j.service.boltPort }}/;
+        proxy_set_header Host $host;
+    }
+
+    error_page   500 502 503 504  /50x.html;
+    location = /50x.html {
+        root   /usr/share/nginx/html;
+    }
+}
+{{ .Values.ui.nginx.additionalConfig }}
+" > /config/nginx.conf']
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /config
+      containers:
+        - name: {{ include "cypher-workbench.ui.fullname" . }}
+          securityContext:
+            {{- toYaml .Values.ui.securityContext | nindent 12 }}
+          image: "{{ .Values.image.registry }}/{{ .Values.image.ui.repository }}:{{ .Values.image.ui.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.ui.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+            - name: env-config
+              mountPath: /usr/share/nginx/html/config
+          resources:
+            {{- toYaml .Values.ui.resources | nindent 12 }}
+      {{- with .Values.ui.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: nginx-conf
+          emptyDir: {}
+        - name: env-config
+          configMap:
+            name: {{ include "cypher-workbench.ui.fullname" . }}-env-config
+{{- end }}

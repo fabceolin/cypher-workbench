@@ -1,0 +1,8 @@
+{{/*
+    This template has been disabled as Neo4j is now deployed using the official Neo4j Helm chart
+    as a dependency. The Neo4j service is automatically created by the subchart.
+
+    The Neo4j service will be available at:
+    - {{ .Release.Name }}-neo4j:7474 (HTTP)
+    - {{ .Release.Name }}-neo4j:7687 (Bolt)
+*/}}
