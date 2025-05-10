@@ -1,4 +1,3 @@
-
 ## Cypher Workbench
 Cypher Workbench (also known as Solutions Workbench) is a cloud based tool that assists Neo4j developers in creating and maintaining solutions built on top of Neo4j. Cypher Workbench provides support throughout the entire solution development lifecycle from project inception through testing. Additionally, with its reverse engineering, validation, and debugging capabilities, it can be used to introspect existing Neo4j deployments to assist with maintenance, documentation, or troubleshooting.
 
@@ -12,12 +11,37 @@ The project is divided into 3 main folders:
 * *ui*: contains the React UI
 * *docker*: build scripts to bundle the API and UI as docker containers
 
-To run the code locally, you will need to do 3 things:
-* Setup a Neo4j database
-* Build and configure the *api*
-* Build and configure the *ui*
+You can run Cypher Workbench in two ways:
+1. Using Docker Compose (recommended for quick setup)
+2. Building and running the components individually
 
-### Setup a Neo4j database
+### Quick Start with Docker Compose
+The easiest way to get started is to use the provided Docker Compose configuration:
+
+1. Clone this repository
+2. Navigate to the repository root directory
+3. Run `docker-compose up -d`
+
+This will:
+- Start a Neo4j database
+- Automatically initialize the database with required constraints and data
+- Build and start the API service
+- Build and start the UI service with proper configurations
+
+Once all services are running, access Cypher Workbench at http://localhost.
+
+To log in, use:
+- Email: `admin`
+- Password: `neo4j`
+
+### Individual Setup
+If you prefer to run the components separately, you'll need to:
+
+1. Setup a Neo4j database
+2. Build and configure the *api*
+3. Build and configure the *ui*
+
+#### Setup a Neo4j database
 You will need to setup an Aura instance or a Neo4j database to use as the backend storage for Cypher Workbench. 
 
 * If you are running Aura or Neo4j Community, you will use the default database `neo4j`.
@@ -27,7 +51,7 @@ You will need to setup an Aura instance or a Neo4j database to use as the backen
 * For Neo4j Community or Enterprise Edition, you will also need to install APOC Core. For instructions on how to do this, please follow this [link](https://neo4j.com/docs/apoc/current/installation/). 
   * Aura users will already have this installed.
 
-### Cypher initialization scripts
+#### Cypher initialization scripts
 Within the folder `docker/cw-config/cw-config/cw-db-setup/` you will find a few Cypher scripts:
 
 * cypher_constraints_v4.3.cypher
@@ -45,14 +69,14 @@ Follow these steps to run the Cypher:
 
 Your database is now ready to be used.
 
-### Build and run the API
+#### Build and run the API
 Follow the instructions in the *api* README file to build and run the API.
 
-### Build and run the UI
+#### Build and run the UI
 Follow the instructions in the *ui* README file to build and run the UI.
 
 ### Login
-Assuming you installed this locally, use your web browser to navigate to http://localhost:3000. You will be presented with a login screen. 
+Assuming you installed this locally, use your web browser to navigate to http://localhost when using Docker Compose, or http://localhost:3000 when running the UI individually. You will be presented with a login screen. 
 
 Enter `admin` for email and `neo4j` for password and hit `<Enter>` or click the `Continue` button. You should now be logged in.
 
@@ -64,35 +88,40 @@ Here are some things to double-check if you are having trouble logging in:
 
 If you change any `.env` settings you will need to restart the API by stopping it and running `npm start`.
 
+## Environment Configuration
+The Docker Compose setup uses environment variables and templating to automatically configure the system. The following environment variables can be set:
+
+- `NGROK_DOMAIN`: Your ngrok domain (e.g., your-domain.ngrok-free.app)
+- `NGROK_AUTHTOKEN`: Your ngrok authentication token
+- `NGROK_TCP_ENDPOINT`: For TCP tunneling to the Neo4j Bolt port
+
+The configuration templates are located in:
+- `docker/cw-config/cw-ui-nginx-template/nginx.conf.template`: Template for nginx configuration
+- `docker/cw-config/cw-ui-template/env-config.js.template`: Template for UI environment configuration
+
+These templates are automatically processed by the `cypher-workbench-init` service with the script `docker/cw-config/scripts/init-config.sh`, which uses environment variables to generate the final configuration files.
+
 ## Advanced topics
 These sections describe further optional configuration.
 
 ### Setting up HTTPS via ngrok
-You can expose your local Cypher Workbench instance over HTTPS using ngrok. This allows you to access your workbench remotely and securely. Here's how to set it up:
+You can expose your local Cypher Workbench instance over HTTPS using ngrok. This allows you to access your workbench remotely and securely. With the Docker Compose setup, this is simplified:
 
-1. Sign up for an ngrok account and install the ngrok client from [ngrok.com](https://ngrok.com/)
-2. Configure your ngrok with your auth token
-3. Update the `ui/nginx.conf` file to include your ngrok domain:
+1. Sign up for an ngrok account and get your auth token from [ngrok.com](https://ngrok.com/)
+2. Set the following environment variables before running `docker-compose up -d`:
    ```
-   server {
-       listen       80;
-       server_name  localhost your-domain.ngrok-free.app;
-       ...
-   }
+   export NGROK_DOMAIN=your-domain.ngrok-free.app
+   export NGROK_AUTHTOKEN=your-ngrok-auth-token
    ```
-4. Update the `ui/public/config/env-config.js` to use your ngrok URL:
-   ```javascript
-   window._dynamicEnv_ = {
-       // Other configs...
-       REACT_APP_GRAPHQL_URI: 'https://your-domain.ngrok-free.app/graphql',
-       // Other configs...
-   }
-   ```
-5. Start your Cypher Workbench API and UI
-6. Start ngrok with: `ngrok http 80`
-7. Access your workbench via the ngrok URL (e.g., https://your-domain.ngrok-free.app)
+3. Run `docker-compose up -d`
+4. Access your workbench via the ngrok URL (e.g., https://your-domain.ngrok-free.app)
 
-This setup allows you to:
+This setup will:
+- Configure nginx to respond to your ngrok domain
+- Set the proper GraphQL URI for the UI
+- Start ngrok tunnels for both HTTP and Neo4j Bolt connections
+
+Benefits include:
 - Access your workbench securely over HTTPS
 - Share your workbench with others temporarily
 - Test your workbench from various devices
@@ -107,9 +136,9 @@ Pick a new value, and make sure the new value is set in both files. You will nee
 Additionally, the default `admin` user will no longer work. See *Creating Users* below on how to fix this.
 
 #### Docker Notes
-If you build the docker images and you have changed the key, please change the encyption key value in:
-* docker/sw-config/sw-config/sw-ui-template/env-config.js.template
-* docker/workbench_labs_files/docker-compose-labs.yml
+If you build the docker images and you have changed the key, please change the encryption key value in:
+* docker/cw-config/cw-ui-template/env-config.js.template
+* docker-compose.yml (in the cypher-workbench-ui service)
 
 These settings can also be changed after doing a docker deployment.
 
