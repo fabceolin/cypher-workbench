@@ -57,11 +57,32 @@ services:
       - NEO4J_PASSWORD=password
       - NEO4J_DATABASE=neo4j
       - HOST_PROTOCOL=http
-      - HOST_NAME=${NGROK_DOMAIN}
+      - HOST_NAME=localhost
     networks:
       - cypher-network
     volumes:
       - ./api/license.lic:/app/license.lic:ro
+
+  cypher-workbench-init:
+    image: alpine:latest
+    volumes:
+      - ./docker/cw-config/scripts:/scripts
+      - ./docker/cw-config/cw-ui-nginx-template:/cw-config/cw-ui-nginx-template
+      - ./docker/cw-config/cw-ui-template:/cw-config/cw-ui-template
+      - ./ui/nginx.conf:/usr/share/nginx/html/nginx.conf
+      - ./ui/public/config:/usr/share/nginx/html/config
+    environment:
+      - NGROK_DOMAIN=${NGROK_DOMAIN}
+      - GRAPHQL_URI=https://${NGROK_DOMAIN}/graphql
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "
+      apk add --no-cache bash gettext;
+      /scripts/init-config.sh;
+      echo 'Configuration initialized successfully';
+      "
+    networks:
+      - cypher-network
 
   cypher-workbench-ui:
     build:
@@ -73,6 +94,7 @@ services:
       - "443:443"
     depends_on:
       - cypher-workbench-api
+      - cypher-workbench-init
     networks:
       - cypher-network
     volumes:
