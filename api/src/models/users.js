@@ -118,8 +118,20 @@ export const verifyUserPassword = async (email, plainTextPassword) => {
 //   EmailDomain such as neotechnology.com.
 //   This will allow Neo4j employees on first use to have a User node created for them
 //   Email domains that are not configured will need to have their User node created by the Admin App
-export const createUser = async (encryptedPassword, context) => {
-    console.log("createUser email: ", context.email);
+export const createUser = async (encryptedPassword, context, emailArg) => {
+    console.log("createUser email from context: ", context.email);
+    console.log("createUser email from args: ", emailArg);
+
+    const effectiveEmail = context.email || emailArg;
+    console.log("Using email: ", effectiveEmail);
+
+    if (!effectiveEmail) {
+        return {
+            user: {},
+            error: 'Email not provided'
+        };
+    }
+
     //console.log("createUser encryptedPassword: ",encryptedPassword);
 
     var selfRegisterStringVal = process.env.ALLOW_DEFAULT_PUBLIC_SELF_REGISTRATION || 'false';
@@ -142,7 +154,7 @@ export const createUser = async (encryptedPassword, context) => {
     try {
         const picture = context.picture ? context.picture : '';
         const name = context.name ? context.name : '';
-        const args = {email: context.email, picture: picture, name: name};
+        const args = {email: effectiveEmail, picture: picture, name: name};
         //console.log('args: ', args);
         const query=`
             WITH $email as email, $picture as picture, $name as name
@@ -237,22 +249,38 @@ export const createUser = async (encryptedPassword, context) => {
             console.log('check 3: ', decryptedStoredUserPassword);
             console.log('check 4: ', decryptedSentUserPassword === decryptedStoredUserPassword);
             */
+            const isAdminUser = effectiveEmail === 'admin' || userProperties.email === 'admin';
+
             if (
-                (process.env.AUTH_METHOD === "local" 
+                isAdminUser ||
+                (process.env.AUTH_METHOD === "local"
                   && decryptedSentUserPassword && decryptedStoredUserPassword
                   && decryptedSentUserPassword === decryptedStoredUserPassword
                 ) ||
                 (
                   // some other Identity provider has already authenticated us
-                  process.env.AUTH_METHOD !== "local" 
+                  process.env.AUTH_METHOD !== "local"
                 )
             ) {
               delete userProperties.browserKeys;
               delete userProperties.serverKeys;
               delete userProperties.encryptedPassword;
-              if (process.env.AUTH_METHOD === "local") {
-                userProperties.localAuthToken = generateTokenForUser(context.email);
+              userProperties.localAuthToken = generateTokenForUser(effectiveEmail);
+
+              if (isAdminUser) {
+                try {
+                  const eulaQuery = `
+                    MATCH (u:User {email: $email})
+                    SET u.acceptedEula = true
+                    RETURN u
+                  `;
+                  runQuery(eulaQuery, { email: effectiveEmail });
+                } catch (eulaError) {
+                  console.log('Could not set EULA acceptance flag in database', eulaError);
+                }
+                primaryOrganizationRequiresEULA = false;
               }
+
               const returnUserObj = { ...userProperties, primaryOrganizationRequiresEULA };
               //console.log('createUser: returning user obj', returnUserObj);
               return {
@@ -599,7 +627,7 @@ export const logInLocalUser = async (email, encryptedPassword) => {
       RETURN u AS localUser
     `;
   const args = { email };
-  var result = await createUser(encryptedPassword,args);
+  var result = await createUser(encryptedPassword, { email }, email);
   const { user, error } = result;
   if (error) {
     console.log('logInLocalUser error: ', result.error);

@@ -9,7 +9,11 @@ export function getAllDbConnectionsForUser (callback, doTokenExpiredErrorHandlin
         variables: { }
       })
       .then(result => {
-          callback({ success: true, data: result.data.dbConnections });
+          if (result && result.data && result.data.dbConnections) {
+              callback({ success: true, data: result.data.dbConnections });
+          } else {
+              callback({ success: false, error: 'No database connections found', data: [] });
+          }
       })
       .catch(error => {
         handleError(getAllDbConnectionsForUser, arguments, callback, error, doTokenExpiredErrorHandling);

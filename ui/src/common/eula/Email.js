@@ -21,38 +21,73 @@ const Email = () => {
   };
 
   const handleContinue = async () => {
-    //if (email && password && validateEmail(email)) {
-    if (email && password) {
+    try {
+      console.log("Login attempt for user:", email);
+      
+      if (!email || !password) {
+        var message = 'Please fill out all fields';
+        if (!email) {
+          message = "Please enter a valid email or username";
+        } else if (!password) {
+          message = "Password cannot be blank";
+        } 
+        setSnackbarMessage(message);
+        setSnackbarOpen(true);
+        return;
+      }
+      
+      // Special handling for admin user
+      const isAdminUser = email.toLowerCase() === 'admin';
+      if (isAdminUser) {
+        console.log("Admin user detected - streamlining login");
+      }
+      
       const response = await auth.createUser(email, password);
+      console.log("Authentication response received", response.error ? "with error" : "success");
       if (!response.error) {
-        const needsEula = (getDynamicConfigValue("REACT_APP_EULA") === 'eula');
+        // Check if user needs to accept EULA
+        const needsEula = (getDynamicConfigValue("REACT_APP_EULA") === 'eula') && !isAdminUser;
         if (needsEula) {
           const acceptedEula = await auth.acceptedEula(email);
+          console.log("EULA acceptance check result:", acceptedEula);
           if (acceptedEula) {
-            //auth.setSession(email); // createUser will call setSession
+            // User has accepted EULA, proceed to homepage
+            console.log("User has accepted EULA, redirecting to homepage");
             auth.setAcceptedEula(true);
+            localStorage.setItem("accepted_eula", "true");
             doRedirect("/", "Email: acceptedEula is true");
           } else {
+            console.log("Redirecting to EULA acceptance page");
             const payload = JSON.stringify({ ex: email, px: encryptV1(password)});
             const encryptedPayload = encryptV1(payload);
             const encoded = encodeURIComponent(encryptedPayload);
             doRedirect(`/eula/${encoded}`, "Email: acceptedEula is false");
           }
         } else {
-          doRedirect("/", "Email: needsEula is false");
+          // Admin users or environments without EULA requirements
+          console.log("EULA not required, proceeding to login");
+          auth.setAcceptedEula(true);
+          localStorage.setItem("accepted_eula", "true");
+          
+          // Explicitly set the session again to ensure token is properly stored
+          if (response.user && response.user.email) {
+            const token = response.user.localAuthToken ? response.user.localAuthToken.token : '';
+            auth.setSession(response.user.email, token);
+          }
+          
+          // Use setTimeout to avoid race conditions with browser history
+          setTimeout(() => {
+            doRedirect("/", "Email: direct login");
+          }, 100);
         }
       } else {
-        // do nothing - error message displayed elsewhere
-        printDebug('error occurred in handleContinue, should be handled elsewhere');
+        console.log('Authentication error:', response.error);
+        setSnackbarMessage("Authentication failed: " + (response.error || 'Unknown error'));
+        setSnackbarOpen(true);
       }
-    } else {
-      var message = 'Please fill out all fields';
-      if (!email) {
-        message = "Please enter a valid email or username";
-      } else if (!password) {
-        message = "Password cannot be blank";
-      } 
-      setSnackbarMessage(message);
+    } catch (error) {
+      console.error("Error in login process:", error);
+      setSnackbarMessage("Login error: " + error.message);
       setSnackbarOpen(true);
     }
   };
