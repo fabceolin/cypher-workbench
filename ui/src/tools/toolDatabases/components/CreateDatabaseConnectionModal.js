@@ -143,8 +143,10 @@ const CreateDatabaseConnectionModal = ({isOpen, onClose, refetch}) => {
                 refetch();
             }, (error) => {
                 const errorMessage = (error && error.message) ? error.message : `${error}`;
-                if (errorMessage.match(/Max number of licensed (.+) reached/)) {
-                    const maxedThing = errorMessage.match(/Max number of licensed (.+) reached/)[1];
+                // Safely check if the match exists before accessing properties
+                const licenseMatch = errorMessage ? errorMessage.match(/Max number of licensed (.+) reached/) : null;
+                if (licenseMatch && licenseMatch[1]) {
+                    const maxedThing = licenseMatch[1];
                     showMaxReachedUpgradeLicenseMessage(maxedThing);
                 } else {
                     alert(errorMessage);

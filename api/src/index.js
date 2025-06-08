@@ -447,22 +447,37 @@ const stripToken = token => {
 
 const getGraphQLOperation = (graphQLRequest) => {
   try {
-    const parsedGraphQLRequest = gql(graphQLRequest);
-    const def = parsedGraphQLRequest.definitions[0];
-    if (def) {
-      const selection = def.selectionSet.selections[0];
-      if (selection) {
-        return selection.name.value;
-      } else {
-        console.log("Can't process graphQL definitions.selections");
-        return null;
-      }
-    } else {
-      console.log("Can't process graphQL definitions");
+    // Return early if graphQLRequest is undefined or null
+    if (!graphQLRequest) {
+      console.log("GraphQL request is null or undefined");
       return null;
     }
+
+    // Print the request for debugging
+    // console.log("Processing GraphQL request:", graphQLRequest);
+
+    const parsedGraphQLRequest = gql(graphQLRequest);
+    if (!parsedGraphQLRequest || !parsedGraphQLRequest.definitions || !parsedGraphQLRequest.definitions.length) {
+      console.log("No GraphQL definitions found");
+      return null;
+    }
+
+    const def = parsedGraphQLRequest.definitions[0];
+    if (!def || !def.selectionSet || !def.selectionSet.selections || !def.selectionSet.selections.length) {
+      console.log("Can't process graphQL definitions or selections");
+      return null;
+    }
+
+    const selection = def.selectionSet.selections[0];
+    if (!selection || !selection.name) {
+      console.log("GraphQL selection or name is missing");
+      return null;
+    }
+
+    return selection.name.value;
   } catch (e) {
     console.log("Error parsing graphQLRequest, error: ", e);
+    return null; // Make sure we always return something
   }
 }
 
@@ -482,22 +497,38 @@ function startServer() {
       playground: (process.env.APOLLO_SERVER_PLAYGROUND === 'true'),
       cors: true,
       context: async ({ req }) => {
-        /*
-        Object.keys(req)
-          .filter(key => !key.match(/_/) && key !== 'res' & key !== 'socket' && key !== 'client')
-          .map(key => console.log(`${key}: `, req[key]));
-        */
-        //console.log('-- *** ---');
-        const graphQLOperation = getGraphQLOperation(req.body.query);
-        
-        //console.log(req.body);
-        //console.log(req.body.variables);
-        //console.log(req.body.operationName);
-        const token = req.headers.authorization;
-        const baseContext = {
-          driver,
-          driverConfig: { database: process.env.NEO4J_DATABASE || 'neo4j' }
-        };        
+        try {
+          // Make sure req and req.body exist before accessing properties
+          if (!req || !req.body) {
+            console.log("Request or request body is missing");
+            return {
+              driver,
+              driverConfig: { database: process.env.NEO4J_DATABASE || 'neo4j' }
+            };
+          }
+
+          // Get the operation name safely
+          const graphQLOperation = getGraphQLOperation(req.body.query);
+          console.log("GraphQL Operation:", graphQLOperation);
+
+          // Get email from variables if present
+          let emailFromVariables = null;
+          if (req.body.variables && req.body.variables.email) {
+            emailFromVariables = req.body.variables.email;
+            console.log("Email from variables:", emailFromVariables);
+          }
+
+          const token = req.headers.authorization;
+          const baseContext = {
+            driver,
+            driverConfig: { database: process.env.NEO4J_DATABASE || 'neo4j' }
+          };
+
+          // If we have an email in variables and it's for the createUser operation, add it to context
+          if (emailFromVariables && (graphQLOperation === 'createUser' || !graphQLOperation)) {
+            console.log("Adding email from variables to context");
+            return { ...baseContext, email: emailFromVariables };
+          }
           if (process.env.AUTH_METHOD=="auth0") {
             const id_token = stripToken(token);
             if (process.env.AUTH0_API_KEY_AUDIENCE) {
@@ -532,8 +563,15 @@ function startServer() {
               logAuth('verifyLocalAuthInfo email: ', email);
               return { ...baseContext, email };
           } else {
-              return {};
+              return baseContext;
           }
+        } catch (error) {
+          console.error("Error in context function:", error);
+          return {
+            driver,
+            driverConfig: { database: process.env.NEO4J_DATABASE || 'neo4j' }
+          };
+        }
       }
     });
 

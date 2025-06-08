@@ -11,47 +11,70 @@ class Auth {
   }
 
   createUser = async (email, password) => {
-    const uri = getDynamicConfigValue("REACT_APP_GRAPHQL_URI") || "GRAPHQL_URI not specified";
-    const variables = { encryptedPassword: (password) ? encryptV1(password) : '' };
-    var authorization = `Bearer ${this.getBearerJson(email)}`;
-    var graphQLConnection = getGraqhQLConnection(uri, authorization);
-    return graphQLConnection.mutate({
-      mutation: gql`
-        mutation createUser ($encryptedPassword: String) {
-          createUser (encryptedPassword: $encryptedPassword) {
-            error
-            user {
-              email
-              name
-              localAuthToken {
-                token
-                expires
+    try {
+      console.log("Creating user with email:", email);
+      const uri = getDynamicConfigValue("REACT_APP_GRAPHQL_URI") || "GRAPHQL_URI not specified";
+      console.log("Using GraphQL URI:", uri);
+      
+      const encryptedPassword = (password) ? encryptV1(password) : '';
+      const variables = { encryptedPassword, email: email };
+      console.log("GraphQL variables:", { ...variables, encryptedPassword: "[ENCRYPTED]" });
+      
+      var authorization = `Bearer ${this.getBearerJson(email)}`;
+      console.log("Authorization header set with email:", email);
+      
+      // Adding email parameter to ensure it's in the context
+      var graphQLConnection = getGraqhQLConnection(uri, authorization);
+      
+      const result = await graphQLConnection.mutate({
+        mutation: gql`
+          mutation createUser ($encryptedPassword: String, $email: String) {
+            createUser (encryptedPassword: $encryptedPassword, email: $email) {
+              error
+              user {
+                email
+                name
+                localAuthToken {
+                  token
+                  expires
+                }
               }
             }
           }
-      }`,
-      variables: variables
-    })
-      .then((result) => {
-          const { data } = result;
-          const { error, user } = data.createUser;
-          if (error) {
-            console.log("Auth error: " + error);
-            alert("Auth error: " + error);
-            this.logout();
-            return { error }
-          } else {
-            this.setSession(user.email, user.localAuthToken.token);
-            return { user };
-          }
-      })
-      .catch(error => {
+        `,
+        variables: variables
+      });
+      
+      const { data } = result;
+      const { error, user } = data.createUser;
+      
+      if (error) {
         console.log("Auth error: " + error);
         alert("Auth error: " + error);
         this.logout();
-        return { error }
-        //if (callbackFunc) callbackFunc();
-      });
+        return { error };
+      } else if (!user || !user.email) {
+        const errorMsg = "User data is incomplete or missing";
+        console.log(errorMsg);
+        alert(errorMsg);
+        this.logout();
+        return { error: errorMsg };
+      } else if (!user.localAuthToken) {
+        console.log("User found but localAuthToken is missing - attempting to log in directly");
+        // If we have a user but no token, try to log in directly
+        this.login(user.email, password);
+        return { user };
+      } else {
+        console.log("Successful authentication with token");
+        this.setSession(user.email, user.localAuthToken.token);
+        return { user };
+      }
+    } catch (error) {
+      console.log("Auth error: " + error);
+      alert("Auth error: " + error);
+      this.logout();
+      return { error };
+    }
   }
 
   getIdentityInfo = () => {
@@ -72,35 +95,70 @@ class Auth {
     return { email: this.getEmailFromIdToken(localStorage.getItem("id_token")) };
   };
 
-  login = (email, encryptedPassword) => {
-    const uri = getDynamicConfigValue("REACT_APP_GRAPHQL_URI");
-    const variables = { email, encryptedPassword };
-    var authorization = `Bearer ${this.getBearerJson(email)}`;
-    var graphQLConnection = getGraqhQLConnection(uri, authorization);
-    graphQLConnection.mutate({
-      mutation: gql`mutation LogInLocalUser ($email: String, $encryptedPassword: String) {
-        localUser: logInLocalUser (email: $email, encryptedPassword: $encryptedPassword) {
-          email
-        }
+  login = async (email, encryptedPassword) => {
+    try {
+      console.log("Login function called for user:", email);
+      const uri = getDynamicConfigValue("REACT_APP_GRAPHQL_URI");
+      const variables = { email, encryptedPassword };
+      var authorization = `Bearer ${this.getBearerJson(email)}`;
+      var graphQLConnection = getGraqhQLConnection(uri, authorization);
+      
+      // The admin login might need special handling
+      const isAdminUser = email.toLowerCase() === 'admin';
+      if (isAdminUser) {
+        console.log("Admin user login detected");
       }
-      `,
-      variables: variables
-    })
-      .then((result) => {
-        if (result.data.localUser.email) {
-          this.setSession(email, result.data.localUser.localAuthToken);
-          this.setAcceptedEula(true);
-          doRedirect("/", "localAuth: setAcceptedEula true");
-        } else {
-          //alert('Logging out');
-          this.logout();
+      
+      console.log("Executing login mutation...");
+      const result = await graphQLConnection.mutate({
+        mutation: gql`mutation LogInLocalUser ($email: String, $encryptedPassword: String) {
+          localUser: logInLocalUser (email: $email, encryptedPassword: $encryptedPassword) {
+            email
+            localAuthToken {
+              token
+              expires
+            }
+          }
         }
-      })
-      .catch((err) => {
-        //console.log(`Logging out: ${err}`);
-        console.log(err);
-        this.logout();
+        `,
+        variables: variables
       });
+      
+      console.log("Login mutation completed", result);
+      
+      if (result.data && result.data.localUser && result.data.localUser.email) {
+        console.log("User authenticated successfully");
+        
+        // Extract token from result if available
+        let token = '';
+        if (result.data.localUser.localAuthToken && result.data.localUser.localAuthToken.token) {
+          token = result.data.localUser.localAuthToken.token;
+          console.log("Token received from server");
+        } else {
+          console.log("No token in response, using empty token");
+        }
+        
+        // Set the session with the extracted token
+        this.setSession(email, token);
+        this.setAcceptedEula(true);
+        
+        // Use setTimeout to avoid race conditions with browser history
+        console.log("Redirecting to homepage");
+        setTimeout(() => {
+          doRedirect("/", "localAuth: login success");
+        }, 100);
+        
+        return true;
+      } else {
+        console.warn("Login response did not contain user data");
+        this.logout();
+        return false;
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      this.logout();
+      return false;
+    }
   };
 
   getCredentialsFromIdToken = (idToken) => {
@@ -169,27 +227,27 @@ class Auth {
   acceptedEula = async (email) => {
     const eulaSetting = getDynamicConfigValue("REACT_APP_EULA");
     if (eulaSetting === 'none') {
-      return new Promise((resolve, reject) => resolve(true));
+      return true;
     }
 
     const uri = getDynamicConfigValue("REACT_APP_GRAPHQL_URI");
     const variables = { email };
     var authorization = `Bearer ${this.getIdToken()}`;
     var graphQLConnection = getGraqhQLConnection(uri, authorization);
-    graphQLConnection.query({
-      query: gql`query AcceptedEula ($email: String) {
-        acceptedEula (email: $email)
-      }
-      `,
-      variables: variables
-    })
-      .then((result) => {
-        const acceptedEula = result.data.acceptedEula;
-        return acceptedEula;
-      })
-      .catch(() => {
-        this.logout();
+    try {
+      const result = await graphQLConnection.query({
+        query: gql`query AcceptedEula ($email: String) {
+          acceptedEula (email: $email)
+        }
+        `,
+        variables: variables
       });
+      return result.data.acceptedEula;
+    } catch (error) {
+      console.log('Error checking EULA acceptance:', error);
+      // Don't logout immediately, return false to allow better error handling
+      return false;
+    }
   };
 
   isAuthenticated = () => {

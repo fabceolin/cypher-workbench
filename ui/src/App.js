@@ -190,32 +190,62 @@ class App extends Component {
         return;
       }
     } else if (authMethod === "local") {
-      // if using local auth check for an email in local storage
-      const idToken = localStorage.getItem("id_token");
-      const email = getAuth().getEmailFromIdToken(idToken);
-      //console.log('email: ', email);
-      printDebug('email: ', email);
-      licenseEulaFile = await getEulaFile();
-      localStorage.setItem('licenseEulaFile', licenseEulaFile);
-      const didAcceptEula = await getAuth().acceptedEula(email);
-      printDebug('didAcceptEula: ', didAcceptEula);
-      if (email && didAcceptEula) {
-        // if email exists and has accepted the Eula set the session
-        //getAuth().callLogEulaAcceptance(email);
-        printDebug('email and acceptedEula true');
-        getAuth().setSession(email, getAuth().getLocalAuthTokenFromIdToken(idToken));
-        getAuth().setAcceptedEula(true);
-        this.forceUpdate();
-      } else if (
-        this.props.location.pathname !== "/login" && 
-        !this.props.location.pathname.match("/eula/*")
-      ) {
-        doRedirect("/login", "App.js email not present or acceptedEula false, redirecting to login")
-        // TODO: double check this in auth0 scenario
-
-        // if no email exists or user has not accepted the Eula logout <-- BAD!
-        // DO NOT LOGOUT!!! - this will destroy the id_token which is required to get the proper eula license file
-        //getAuth().logout();
+      try {
+        // Prevent refresh loops by checking if we're already at the login page
+        if (this.props.location.pathname === "/login") {
+          console.log("Already on login page, not redirecting");
+          return;
+        }
+        
+        // if using local auth check for an email in local storage
+        const idToken = localStorage.getItem("id_token");
+        
+        // If no token exists, go to login right away
+        if (!idToken) {
+          console.log("No ID token found, redirecting to login");
+          doRedirect("/login", "App.js no id_token found");
+          return;
+        }
+        
+        const email = getAuth().getEmailFromIdToken(idToken);
+        console.log('User email:', email ? 'Found' : 'Not found');
+        printDebug('email: ', email);
+        
+        try {
+          licenseEulaFile = await getEulaFile();
+          localStorage.setItem('licenseEulaFile', licenseEulaFile);
+        } catch (eulaError) {
+          console.log('Error fetching EULA file, continuing anyway:', eulaError);
+        }
+        
+        // Only check EULA acceptance if we have an email
+        if (!email) {
+          if (this.props.location.pathname !== "/login" && !this.props.location.pathname.match("/eula/*")) {
+            console.log("No email found in token, redirecting to login");
+            doRedirect("/login", "App.js no email in token");
+          }
+          return;
+        }
+        
+        const didAcceptEula = await getAuth().acceptedEula(email);
+        printDebug('didAcceptEula: ', didAcceptEula);
+        
+        if (didAcceptEula) {
+          // if email exists and has accepted the Eula set the session
+          printDebug('email and acceptedEula true');
+          getAuth().setSession(email, getAuth().getLocalAuthTokenFromIdToken(idToken));
+          getAuth().setAcceptedEula(true);
+          this.forceUpdate();
+        } else if (
+          this.props.location.pathname !== "/login" && 
+          !this.props.location.pathname.match("/eula/*")
+        ) {
+          console.log("User has not accepted EULA, redirecting to login");
+          doRedirect("/login", "App.js acceptedEula false, redirecting to login");
+        }
+      } catch (error) {
+        console.error("Error in auth flow:", error);
+        // Don't automatically redirect on error to prevent refresh loops
       }
     }
   }
