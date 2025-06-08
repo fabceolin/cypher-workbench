@@ -75,7 +75,7 @@ export default `
   }
 
   type Mutation {
-      createUser(encryptedPassword: String, email: String): CreateUserResponse
+      createUser(encryptedPassword: String): CreateUserResponse
       createUserSignUp(input: CustomUser!): User!
       updateUserPrimaryOrganization(primaryOrganization: String): Boolean
       updateUserSettings(userSettings: UserSettingsCreateInput): Boolean

@@ -49,18 +49,8 @@ import {
     Mutation: {
       createUser: async (root, args, context, info) => {
         args = args || {};
-        console.log('createUser args: ', args);
-        console.log('createUser context email: ', context.email);
-        console.log('createUser args email: ', args.email);
-        
-        // Prioritize email from args if available
-        const emailToUse = args.email || context.email;
-        console.log('Using email for authentication: ', emailToUse);
-        
-        // Create a new context with the determined email
-        const contextWithEmail = { ...context, email: emailToUse };
-
-        return await createUser(args.encryptedPassword, contextWithEmail, emailToUse);
+        //console.log('createUser args: ', args);
+        return await createUser(args.encryptedPassword, context);
       },
       createUserSignUp: async (root, { input }, context, info) => {
         /*
